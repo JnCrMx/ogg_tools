@@ -6,6 +6,7 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 
 void readFile(std::string path, std::vector<char>& vector)
 {
@@ -47,7 +48,23 @@ OggFrame readFrame(std::vector<char>::iterator& it)
 	return {ogg, thisBegin, thisEnd};
 }
 
-int getSampleRate(std::vector<char>::iterator it)
+struct AudioAttributes
+{
+	u8 channels;
+	u32 sample_rate;
+
+	std::string to_string()
+	{
+		return "channels = "+std::to_string(channels)+", sample_rate = "+std::to_string(sample_rate)+" Hz";
+	}
+
+	bool operator==(AudioAttributes other)
+	{
+		return channels == other.channels && sample_rate == other.sample_rate;
+	}
+};
+
+AudioAttributes getAudioAttributes(std::vector<char>::iterator it)
 {
 	OggFrame frame = readFrame(it);
 
@@ -60,7 +77,7 @@ int getSampleRate(std::vector<char>::iterator it)
 	if(vorbis.packet_type != 0x01 || std::string(vorbis.vorbis) != "vorbis")
 		throw std::runtime_error("illegal vorbis header: packet type "+std::to_string(vorbis.packet_type)+" and signature \""+vorbis.vorbis+"\"");
 
-	return vorbis.audio_sample_rate;
+	return {vorbis.audio_channels, vorbis.audio_sample_rate};
 }
 
 int main(int argc, char* argv[]) 
@@ -75,7 +92,7 @@ int main(int argc, char* argv[])
 			<< "\t" "spacer          mp3 file that is used to confuse the length detection (should be ~1:00 of silence)" << std::endl
 			<< "\t" "output          output ogg file" << std::endl
 			<< std::endl
-			<< "\t" << "The inputs \"input1\" and \"input2\" must have the same sample rate." << std::endl
+			<< "\t" << "The inputs \"input1\" and \"input2\" must have the same sample rate and channel count." << std::endl
 			<< "\t" << "The sample rate of the \"intermediate\" input does not seem to matter at all." << std::endl;
 		return 1;
 	}
@@ -94,11 +111,13 @@ int main(int argc, char* argv[])
 
 	std::ofstream out(output, std::ios::binary);
 
-	int sampleRate1 = getSampleRate(data1.begin());
-	int sampleRate2 = getSampleRate(data2.begin());
-	if(sampleRate1 != sampleRate2)
+	auto audio_attributes1 = getAudioAttributes(data1.begin());
+	auto audio_attributes2 = getAudioAttributes(data2.begin());
+	if(audio_attributes1 != audio_attributes2)
 	{
-		std::cout << "input1 and input2 differ in sample rate: " << sampleRate1 << " Hz vs " << sampleRate2 << " Hz." << std::endl;
+		std::cout << "input1 and input2 differ in sample rate or channel count: " << std::endl << std::left 
+			<< "[input1] " << std::setw(std::max(input1.size(), input2.size())) << input1 << " :   " << audio_attributes1.to_string() << std::endl
+			<< "[input2] " << std::setw(std::max(input1.size(), input2.size())) << input2 << " :   " << audio_attributes2.to_string() << std::endl;
 		std::cout << "The output file might not work as expected!" << std::endl;
 	}
 
